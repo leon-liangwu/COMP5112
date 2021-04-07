@@ -6,7 +6,7 @@
  * Please only change this file and do not change any other files.
  * Feel free to change/add any helper functions.
  *
- * COMPILE: g++ -lstdc++ -std=c++11 -lpthread clustering_pthread_skeleton.cpp -main.cpp -o pthread
+ * COMPILE: g++ -lstdc++ -std=c++11 -lpthread clustering_pthread_skeleton.cpp main.cpp -o pthread
  * RUN:     ./pthread <path> <epsilon> <mu> <num_threads>
  */
 
@@ -33,6 +33,8 @@ bool *visited;
 int counter;
 sem_t count_sem;
 sem_t barrier_sem;
+
+pthread_mutex_t *mutex;
 
 struct AllThings{
     int num_threads;
@@ -99,37 +101,26 @@ void *parallel(void* allthings){
     }
 
     // barrier
-    int val;
-    sem_getvalue(&count_sem, &val);
-    printf("val: %d\n", val);
-
     sem_wait(&count_sem);
-    
-    printf("counter: %d %d %d\n", counter, num_threads, val);
     if (counter == num_threads - 1) {
         counter = 0;
-        printf("%d wait last\n", my_rank);
-        sleep(1);
         sem_post(&count_sem);
         for (j = 0; j < num_threads-1; j++)
             sem_post(&barrier_sem);
 
     } else {
         counter++;
-        printf("%d wait\n", my_rank);
         sem_post(&count_sem);
         sem_wait(&barrier_sem);
     }
 
-    printf("%d barrier\n", my_rank);
-
-
     // stage 2
     int num_clusters = 0;
     for (int i = my_first_i; i < my_last_i; i++) {
+        pthread_mutex_lock(&mutex[i]);
         if (!pivots[i] || visited[i]) continue;
-
         visited[i] = true;
+        pthread_mutex_unlock(&mutex[i]);
         g_cluster_result[i] = i;
         expansion(i, i, num_sim_nbrs, sim_nbrs, visited, pivots, g_cluster_result);
 
@@ -149,6 +140,8 @@ int *scan(float epsilon, int mu, int num_threads, int num_vs, int num_es, int *n
     sem_init(&barrier_sem, 0, 0);
     sem_init(&count_sem, 0, 1);
 
+    mutex = new pthread_mutex_t[num_vs]();
+
     g_cluster_result = cluster_result;
     g_num_vs = num_vs;
     g_epsilon = epsilon;
@@ -167,14 +160,6 @@ int *scan(float epsilon, int mu, int num_threads, int num_vs, int num_es, int *n
                 num_threads, thread));
     for (thread=0; thread < num_threads; thread++)
         pthread_join(thread_handles[thread], NULL);
-
-    printf("pivots: ");
-    for(int i=0; i<num_vs; i++){
-        if(pivots[i] == true){
-            printf("%d ", i);
-        }
-    }
-    printf("\n");
 
     return cluster_result;
 }
