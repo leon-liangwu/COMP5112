@@ -69,6 +69,7 @@ void *parallel(void* allthings){
     int my_n = g_num_vs/num_threads;
     int my_first_i = my_n*my_rank;
     int my_last_i = my_first_i + my_n;
+    if(my_last_i > g_num_vs) my_last_i = g_num_vs;
 
     int i, j;
 
@@ -115,17 +116,33 @@ void *parallel(void* allthings){
     }
 
     // stage 2
-    int num_clusters = 0;
-    for (int i = my_first_i; i < my_last_i; i++) {
+    int *queue = new int[g_num_vs]();
+    for (i = my_first_i; i < my_last_i; i++) {
+        int head = 0, tail = 0;
         pthread_mutex_lock(&mutex[i]);
-        if (!pivots[i] || visited[i]) continue;
-        visited[i] = true;
+        if((pivots[i]) && (!visited[i])){
+            visited[i] = true;
+            g_cluster_result[i] = i;
+            queue[tail++] = i;
+        }
         pthread_mutex_unlock(&mutex[i]);
-        g_cluster_result[i] = i;
-        expansion(i, i, num_sim_nbrs, sim_nbrs, visited, pivots, g_cluster_result);
 
-        num_clusters++;
+        while(head != tail){
+            int cur_id = queue[head++];
+            for (j = 0; j < num_sim_nbrs[cur_id]; j++) {
+                int nbr_id = sim_nbrs[cur_id][j];
+                pthread_mutex_lock(&mutex[nbr_id]);
+                if ((pivots[nbr_id])&&(!visited[nbr_id])){
+                    visited[nbr_id] = true;
+                    g_cluster_result[nbr_id] = i;
+                    queue[tail++] = nbr_id;
+                }
+                pthread_mutex_unlock(&mutex[nbr_id]);
+            }
+        }
     }
+
+    delete[] queue;
 
     return 0;
 }
@@ -160,6 +177,15 @@ int *scan(float epsilon, int mu, int num_threads, int num_vs, int num_es, int *n
                 num_threads, thread));
     for (thread=0; thread < num_threads; thread++)
         pthread_join(thread_handles[thread], NULL);
+
+    
+    delete[] pivots;
+    delete[] num_sim_nbrs;
+    delete[] visited;
+
+    for (auto i = 0; i < num_vs; i++)
+        delete[] sim_nbrs[i];
+    delete[] sim_nbrs;
 
     return cluster_result;
 }
