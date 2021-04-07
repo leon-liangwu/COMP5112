@@ -1,4 +1,5 @@
 results
 *.o
 *.zip
+/data
 
