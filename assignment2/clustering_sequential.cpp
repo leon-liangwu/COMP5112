@@ -72,14 +72,6 @@ int main(int argc, char **argv) {
     if (num_sim_nbrs[i] > mu) pivots[i] = true;
   }
 
-  printf("pivots: ");
-    for(int i=0; i<num_vs; i++){
-        if(pivots[i] == true){
-            printf("%d ", i);
-        }
-    }
-    printf("\n");
-
   // Stage 2:
   bool *visited = new bool[num_vs]();
   int *cluster_result = new int[num_vs];
