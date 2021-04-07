@@ -30,12 +30,6 @@ int **sim_nbrs;
 // stage 2 vals
 bool *visited;
 
-int counter;
-sem_t count_sem;
-sem_t barrier_sem;
-
-pthread_mutex_t *mutex;
-
 struct AllThings{
     int num_threads;
     int my_rank;
@@ -69,12 +63,10 @@ void *parallel(void* allthings){
     int my_n = g_num_vs/num_threads;
     int my_first_i = my_n*my_rank;
     int my_last_i = my_first_i + my_n;
-    if(my_last_i > g_num_vs) my_last_i = g_num_vs;
-
-    int i, j;
+    if(my_rank == num_threads-1) my_last_i = g_num_vs;
 
     // stage 1
-    for(i=my_first_i; i<my_last_i; i++){
+    for(int i=my_first_i; i<my_last_i; i++){
         int *left_start = &g_nbrs[g_nbr_offs[i]];
         int *left_end = &g_nbrs[g_nbr_offs[i + 1]];
         int left_size = left_end - left_start;
@@ -101,48 +93,6 @@ void *parallel(void* allthings){
         if (num_sim_nbrs[i] > g_mu) pivots[i] = true;
     }
 
-    // barrier
-    sem_wait(&count_sem);
-    if (counter == num_threads - 1) {
-        counter = 0;
-        sem_post(&count_sem);
-        for (j = 0; j < num_threads-1; j++)
-            sem_post(&barrier_sem);
-
-    } else {
-        counter++;
-        sem_post(&count_sem);
-        sem_wait(&barrier_sem);
-    }
-
-    // stage 2
-    int *queue = new int[g_num_vs]();
-    for (i = my_first_i; i < my_last_i; i++) {
-        int head = 0, tail = 0;
-        pthread_mutex_lock(&mutex[i]);
-        if((pivots[i]) && (!visited[i])){
-            visited[i] = true;
-            g_cluster_result[i] = i;
-            queue[tail++] = i;
-        }
-        pthread_mutex_unlock(&mutex[i]);
-
-        while(head != tail){
-            int cur_id = queue[head++];
-            for (j = 0; j < num_sim_nbrs[cur_id]; j++) {
-                int nbr_id = sim_nbrs[cur_id][j];
-                pthread_mutex_lock(&mutex[nbr_id]);
-                if ((pivots[nbr_id])&&(!visited[nbr_id])){
-                    visited[nbr_id] = true;
-                    g_cluster_result[nbr_id] = i;
-                    queue[tail++] = nbr_id;
-                }
-                pthread_mutex_unlock(&mutex[nbr_id]);
-            }
-        }
-    }
-
-    delete[] queue;
 
     return 0;
 }
@@ -152,12 +102,6 @@ int *scan(float epsilon, int mu, int num_threads, int num_vs, int num_es, int *n
     pthread_t* thread_handles = (pthread_t*) malloc(num_threads*sizeof(pthread_t));
     int *cluster_result = new int[num_vs];
     std::fill(cluster_result, cluster_result + num_vs, -1);
-
-    counter = 0;
-    sem_init(&barrier_sem, 0, 0);
-    sem_init(&count_sem, 0, 1);
-
-    mutex = new pthread_mutex_t[num_vs]();
 
     g_cluster_result = cluster_result;
     g_num_vs = num_vs;
@@ -170,14 +114,26 @@ int *scan(float epsilon, int mu, int num_threads, int num_vs, int num_es, int *n
     num_sim_nbrs = new int[num_vs]();
     sim_nbrs = new int*[num_vs];
 
-    visited = new bool[num_vs]();
-
     for (thread=0; thread < num_threads; thread++)
         pthread_create(&thread_handles[thread], NULL, parallel, (void *) new AllThings(
                 num_threads, thread));
     for (thread=0; thread < num_threads; thread++)
         pthread_join(thread_handles[thread], NULL);
 
+    // Stage 2:
+    visited = new bool[num_vs]();
+    // int *cluster_result = new int[num_vs];
+    std::fill(cluster_result, cluster_result + num_vs, -1);
+    int num_clusters = 0;
+    for (int i = 0; i < num_vs; i++) {
+        if (!pivots[i] || visited[i]) continue;
+
+        visited[i] = true;
+        cluster_result[i] = i;
+        expansion(i, i, num_sim_nbrs, sim_nbrs, visited, pivots, cluster_result);
+
+        num_clusters++;
+    }
     
     delete[] pivots;
     delete[] num_sim_nbrs;
