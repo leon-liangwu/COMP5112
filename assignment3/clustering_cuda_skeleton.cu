@@ -1,4 +1,5 @@
 /* 
+ * Liang WU 20636843 lwuat@connect.ust.hk
  * COMPILE: nvcc -std=c++11 clustering_cuda_skeleton.cu clustering_impl.cpp main.cpp -o cuda
  * RUN:     ./cuda <path> <epsilon> <mu> <num_blocks_per_grid> <num_threads_per_block>
  */
